@@ -1,0 +1,91 @@
+CLUBDATA DATABASE SCHEMA
+========================
+
+cd.members
+┌─────────────────┬───────────────────────┐
+│ Column          │ Type                  │
+├─────────────────┼───────────────────────┤
+│ memid (PK)      │ integer               │
+│ surname         │ character varying(200)│
+│ firstname       │ character varying(200)│
+│ address         │ character varying(300)│
+│ zipcode         │ integer               │
+│ telephone       │ character varying(20) │
+│ recommendedby   │ integer (FK→members)  │
+│ joindate        │ timestamp             │
+└─────────────────┴───────────────────────┘
+
+cd.bookings
+┌─────────────────┬───────────────────────┐
+│ Column          │ Type                  │
+├─────────────────┼───────────────────────┤
+│ facid (FK)      │ integer (→facilities) │
+│ memid (FK)      │ integer (→members)    │
+│ starttime       │ timestamp             │
+│ slots           │ integer               │
+└─────────────────┴───────────────────────┘
+
+cd.facilities
+┌─────────────────────┬───────────────────────┐
+│ Column              │ Type                  │
+├─────────────────────┼───────────────────────┤
+│ facid (PK)          │ integer               │
+│ name                │ character varying(100)│
+│ membercost          │ numeric               │
+│ guestcost           │ numeric               │
+│ initialoutlay       │ numeric               │
+│ monthlymaintenance  │ numeric               │
+└─────────────────────┴───────────────────────┘
+
+RELATIONSHIPS
+=============
+
+members.recommendedby ──> members.memid
+  (self-referential: members can recommend other members)
+
+bookings.memid ──> members.memid
+  (each booking belongs to a member)
+
+bookings.facid ──> facilities.facid
+  (each booking is for a facility)
+
+
+ENTITY RELATIONSHIP DIAGRAM (ASCII)
+===================================
+
+                    ┌──────────────┐
+                    │  cd.members  │
+                    ├──────────────┤
+         ┌─────────>│ memid (PK)   │
+         │          │ surname      │
+         │          │ firstname    │
+         │          │ address      │
+         │          │ zipcode      │
+         │          │ telephone    │
+         │  ┌───────┤recommendedby │
+         │  │       │ joindate     │
+         │  │       └──────────────┘
+         │  │             ^
+         │  └─────────────┘│
+         │                 │
+         │                 │
+         │          ┌──────────────┐
+         │          │ cd.bookings  │
+         │          ├──────────────┤
+         │          │ facid (FK) ──┼───────┐
+         └──────────┤ memid (FK)   │       │
+                    │ starttime    │       │
+                    │ slots        │       │
+                    └──────────────┘       │
+                                           │
+                                           v
+                                  ┌─────────────────┐
+                                  │ cd.facilities   │
+                                  ├─────────────────┤
+                                  │ facid (PK)      │
+                                  │ name            │
+                                  │ membercost      │
+                                  │ guestcost       │
+                                  │ initialoutlay   │
+                                  │ monthlymaintenance│
+                                  └─────────────────┘
