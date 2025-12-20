@@ -133,3 +133,4 @@ migrate -database "postgres://devuser:devpass@localhost:5432/devdb?sslmode=disab
 - PGExercises: pgexercises.com
 - pgcli: github.com/dbcli/pgcli
 - golang-migrate: github.com/golang-migrate/migrate
+- when I ask for some command, if they are not existed in COMMANDS.md, after answer my question also confirm with me if I want to add this new command to the markdown file

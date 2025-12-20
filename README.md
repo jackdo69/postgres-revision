@@ -41,7 +41,7 @@ For essential psql meta-commands, see **COMMANDS.md**.
 ```bash
 # Download clubdata.sql from pgexercises.com
 # Then load it (it creates the 'exercises' database automatically)
-psql -h localhost -U devuser -f clubdata.sql
+psql -h localhost -U devuser -d devdb -f clubdata.sql
 
 # Connect to the exercises database
 pgcli -h localhost -U devuser -d exercises

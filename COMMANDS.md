@@ -141,6 +141,61 @@ Master these essential **psql meta-commands** regardless of client choice:
   WHERE DATE(starttime) = '2012-09-14';
   ```
 
+### EXTRACT() / DATE_PART() Functions
+- **Purpose**: Extract specific parts (year, month, day, hour, etc.) from a date/timestamp
+- **Note**: `EXTRACT()` and `DATE_PART()` are functionally identical in PostgreSQL
+- **Syntax**:
+  ```sql
+  -- Using EXTRACT (SQL standard)
+  EXTRACT(field FROM source)
+
+  -- Using DATE_PART (PostgreSQL-specific)
+  DATE_PART('field', source)
+  ```
+- **Common fields**: `year`, `month`, `day`, `hour`, `minute`, `second`, `dow` (day of week)
+- **Examples**:
+  ```sql
+  -- Filter by year
+  SELECT *
+  FROM cd.bookings
+  WHERE EXTRACT(YEAR FROM starttime) = 2012;
+
+  -- Filter by month and year
+  SELECT *
+  FROM cd.bookings
+  WHERE EXTRACT(YEAR FROM starttime) = 2012
+    AND EXTRACT(MONTH FROM starttime) = 9;
+
+  -- Group by month
+  SELECT EXTRACT(MONTH FROM starttime) AS month, COUNT(*) AS bookings
+  FROM cd.bookings
+  GROUP BY EXTRACT(MONTH FROM starttime)
+  ORDER BY month;
+
+  -- Group by facility and month
+  SELECT facid,
+         EXTRACT(MONTH FROM starttime) AS month,
+         SUM(slots) AS total_slots
+  FROM cd.bookings
+  WHERE EXTRACT(YEAR FROM starttime) = 2012
+  GROUP BY facid, EXTRACT(MONTH FROM starttime)
+  ORDER BY facid, month;
+
+  -- Using DATE_PART (alternative syntax)
+  SELECT DATE_PART('year', starttime) AS year,
+         DATE_PART('month', starttime) AS month
+  FROM cd.bookings;
+  ```
+- **Date range filtering**:
+  ```sql
+  -- Method 1: Using EXTRACT
+  WHERE EXTRACT(YEAR FROM starttime) = 2012
+    AND EXTRACT(MONTH FROM starttime) = 9
+
+  -- Method 2: Using date range (often more efficient)
+  WHERE starttime >= '2012-09-01' AND starttime < '2012-10-01'
+  ```
+
 ### ORDER BY
 - **Purpose**: Sort result set by one or more columns
 - **Syntax**:
@@ -155,6 +210,59 @@ Master these essential **psql meta-commands** regardless of client choice:
   FROM cd.members
   ORDER BY surname ASC, firstname ASC;
   ```
+
+### LIMIT and OFFSET
+- **Purpose**: Limit the number of rows returned and optionally skip rows (pagination)
+- **Syntax**:
+  ```sql
+  -- Limit to N rows
+  SELECT columns
+  FROM table_name
+  LIMIT N;
+
+  -- Skip M rows, then return N rows
+  SELECT columns
+  FROM table_name
+  LIMIT N OFFSET M;
+
+  -- Alternative syntax (OFFSET first)
+  SELECT columns
+  FROM table_name
+  OFFSET M ROWS FETCH FIRST N ROWS ONLY;  -- SQL standard syntax
+  ```
+- **Examples**:
+  ```sql
+  -- Get top 5 facilities by slots booked
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid
+  ORDER BY total_slots DESC
+  LIMIT 5;
+
+  -- Get the single facility with most bookings
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid
+  ORDER BY total_slots DESC
+  LIMIT 1;
+
+  -- Pagination: get rows 11-20 (skip first 10, get next 10)
+  SELECT surname, firstname
+  FROM cd.members
+  ORDER BY surname
+  LIMIT 10 OFFSET 10;
+
+  -- Get rows 21-30
+  SELECT surname, firstname
+  FROM cd.members
+  ORDER BY surname
+  LIMIT 10 OFFSET 20;
+  ```
+- **Important notes**:
+  - LIMIT is evaluated AFTER ORDER BY
+  - Always use ORDER BY with LIMIT to ensure consistent results
+  - Without ORDER BY, the rows returned are unpredictable
+  - LIMIT is PostgreSQL/MySQL syntax; SQL standard uses FETCH FIRST
 
 ### Subqueries
 
@@ -215,6 +323,77 @@ Master these essential **psql meta-commands** regardless of client choice:
   WHERE cost > 30  -- Use calculated 'cost' without duplicating CASE logic
   ORDER BY cost DESC;
   ```
+
+#### Subquery Comparison Operators (ALL, ANY, SOME)
+- **Purpose**: Compare a value against all or any values returned by a subquery
+- **Operators**:
+  - `ALL` - true if comparison is true for ALL values in the subquery
+  - `ANY` - true if comparison is true for ANY (at least one) value in the subquery
+  - `SOME` - same as ANY (just a synonym)
+- **Syntax**:
+  ```sql
+  -- ALL: value must satisfy condition for ALL subquery results
+  SELECT columns
+  FROM table_name
+  WHERE column >= ALL (subquery);
+
+  -- ANY/SOME: value must satisfy condition for ANY subquery result
+  SELECT columns
+  FROM table_name
+  WHERE column > ANY (subquery);
+  ```
+- **Examples**:
+  ```sql
+  -- Find facility with most slots booked (without LIMIT)
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid
+  HAVING SUM(slots) >= ALL (
+      SELECT SUM(slots)
+      FROM cd.bookings
+      GROUP BY facid
+  );
+
+  -- Find facilities with more slots than Tennis Court 1
+  SELECT name
+  FROM cd.facilities
+  WHERE facid IN (
+      SELECT facid
+      FROM cd.bookings
+      GROUP BY facid
+      HAVING SUM(slots) > ALL (
+          SELECT SUM(slots)
+          FROM cd.bookings
+          WHERE facid = 0  -- Tennis Court 1
+      )
+  );
+
+  -- Find members who joined later than ANY member from 2012
+  SELECT surname, firstname, joindate
+  FROM cd.members
+  WHERE joindate > ANY (
+      SELECT joindate
+      FROM cd.members
+      WHERE EXTRACT(YEAR FROM joindate) = 2012
+  );
+
+  -- Alternative to MAX using ALL
+  SELECT MAX(monthlymaintenance) FROM cd.facilities;
+  -- is equivalent to:
+  SELECT monthlymaintenance
+  FROM cd.facilities
+  WHERE monthlymaintenance >= ALL (
+      SELECT monthlymaintenance FROM cd.facilities
+  );
+  ```
+- **Common equivalents**:
+  - `= ANY(subquery)` is the same as `IN (subquery)`
+  - `<> ALL(subquery)` is the same as `NOT IN (subquery)`
+  - `> ALL(subquery)` finds values greater than the maximum
+  - `< ALL(subquery)` finds values less than the minimum
+  - `> ANY(subquery)` finds values greater than the minimum
+  - `< ANY(subquery)` finds values less than the maximum
+- **Note**: ALL/ANY/SOME are useful but often less readable than using MAX/MIN or LIMIT. Use them when you specifically need to avoid those approaches.
 
 ### INSERT
 - **Purpose**: Add new rows to a table
@@ -397,3 +576,160 @@ Master these essential **psql meta-commands** regardless of client choice:
 - **When to use**:
   - Use TRUNCATE when deleting all rows from a large table
   - Use DELETE when you need WHERE clause or want to delete specific rows
+
+### GROUP BY and Aggregate Functions
+- **Purpose**: Combine rows with the same values in specified columns and perform calculations on each group
+- **Common aggregate functions**: `SUM()`, `COUNT()`, `AVG()`, `MAX()`, `MIN()`
+- **Syntax**:
+  ```sql
+  SELECT column1, aggregate_function(column2)
+  FROM table_name
+  GROUP BY column1;
+  ```
+- **The Rule**: Use GROUP BY when you mix aggregate columns with non-aggregate columns
+  ```sql
+  -- ✅ CORRECT: All non-aggregated columns are in GROUP BY
+  SELECT facid, SUM(slots)
+  FROM cd.bookings
+  GROUP BY facid;
+
+  -- ✅ CORRECT: Only aggregated column, no GROUP BY needed
+  SELECT SUM(slots)
+  FROM cd.bookings;
+
+  -- ❌ ERROR: facid is not aggregated and not in GROUP BY
+  SELECT facid, SUM(slots)
+  FROM cd.bookings;
+  ```
+- **Examples**:
+  ```sql
+  -- Count recommendations per member
+  SELECT recommendedby, COUNT(*) AS count
+  FROM cd.members
+  WHERE recommendedby IS NOT NULL
+  GROUP BY recommendedby
+  ORDER BY recommendedby;
+
+  -- Total slots booked per facility
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid
+  ORDER BY facid;
+
+  -- Average cost per facility
+  SELECT facid, AVG(membercost) AS avg_cost
+  FROM cd.facilities
+  GROUP BY facid;
+
+  -- Group by multiple columns
+  SELECT facid, memid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid, memid
+  ORDER BY facid, memid;
+  ```
+- **Think of it this way**: GROUP BY creates separate "piles" for each unique value, then calculates aggregates for each pile
+
+### HAVING Clause
+- **Purpose**: Filter groups AFTER aggregation (whereas WHERE filters rows BEFORE aggregation)
+- **SQL Execution Order**:
+  ```
+  1. FROM       - Get the table(s)
+  2. WHERE      - Filter individual rows (BEFORE grouping)
+  3. GROUP BY   - Group rows
+  4. Aggregates - Calculate SUM(), COUNT(), AVG(), etc.
+  5. HAVING     - Filter groups (AFTER aggregation)
+  6. SELECT     - Choose columns to return
+  7. ORDER BY   - Sort results
+  ```
+- **The Rule**:
+  - Use **WHERE** to filter rows before grouping (e.g., `WHERE starttime > '2012-01-01'`)
+  - Use **HAVING** to filter groups after aggregation (e.g., `HAVING SUM(slots) > 1000`)
+- **Syntax**:
+  ```sql
+  SELECT column1, aggregate_function(column2)
+  FROM table_name
+  WHERE condition_on_rows          -- Filter rows BEFORE grouping
+  GROUP BY column1
+  HAVING condition_on_aggregates   -- Filter groups AFTER aggregation
+  ORDER BY column1;
+  ```
+- **Examples**:
+  ```sql
+  -- ❌ WRONG: Can't use aggregate in WHERE
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  WHERE SUM(slots) > 1000  -- ERROR: aggregate functions not allowed in WHERE
+  GROUP BY facid;
+
+  -- ✅ CORRECT: Use HAVING for aggregate filtering
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  GROUP BY facid
+  HAVING SUM(slots) > 1000  -- Filter groups after aggregation
+  ORDER BY facid;
+
+  -- ✅ Using both WHERE and HAVING
+  SELECT facid, SUM(slots) AS total_slots
+  FROM cd.bookings
+  WHERE starttime >= '2012-09-01'  -- Filter rows first (before grouping)
+  GROUP BY facid
+  HAVING SUM(slots) > 1000         -- Filter groups after aggregation
+  ORDER BY total_slots DESC;
+
+  -- Filter facilities with average member cost > 10
+  SELECT facid, AVG(membercost) AS avg_cost
+  FROM cd.facilities
+  GROUP BY facid
+  HAVING AVG(membercost) > 10;
+
+  -- Count members per recommender, show only those who recommended 5+
+  SELECT recommendedby, COUNT(*) AS count
+  FROM cd.members
+  WHERE recommendedby IS NOT NULL
+  GROUP BY recommendedby
+  HAVING COUNT(*) >= 5
+  ORDER BY count DESC;
+  ```
+- **Performance tip**: Use WHERE to filter as early as possible to reduce the data being grouped
+- **IMPORTANT - Column aliases in HAVING**:
+  - **You CANNOT use column aliases in HAVING** - you must repeat the full aggregate expression
+  - Column aliases work in ORDER BY (evaluated last) but NOT in HAVING or WHERE
+  ```sql
+  -- ❌ WRONG: Can't use alias 'revenue' in HAVING
+  SELECT f.name, SUM(
+      CASE WHEN b.memid = 0 THEN f.guestcost * b.slots
+      ELSE f.membercost * b.slots END
+  ) AS revenue
+  FROM cd.facilities f
+  JOIN cd.bookings b ON b.facid = f.facid
+  GROUP BY f.name
+  HAVING revenue < 1000;  -- ERROR: column "revenue" does not exist
+
+  -- ✅ CORRECT: Repeat the full expression in HAVING
+  SELECT f.name, SUM(
+      CASE WHEN b.memid = 0 THEN f.guestcost * b.slots
+      ELSE f.membercost * b.slots END
+  ) AS revenue
+  FROM cd.facilities f
+  JOIN cd.bookings b ON b.facid = f.facid
+  GROUP BY f.name
+  HAVING SUM(
+      CASE WHEN b.memid = 0 THEN f.guestcost * b.slots
+      ELSE f.membercost * b.slots END
+  ) < 1000
+  ORDER BY revenue;  -- ✅ Alias works here in ORDER BY
+
+  -- ✅ ALTERNATIVE: Use subquery to avoid repeating expression
+  SELECT name, revenue
+  FROM (
+      SELECT f.name, SUM(
+          CASE WHEN b.memid = 0 THEN f.guestcost * b.slots
+          ELSE f.membercost * b.slots END
+      ) AS revenue
+      FROM cd.facilities f
+      JOIN cd.bookings b ON b.facid = f.facid
+      GROUP BY f.name
+  ) AS subquery
+  WHERE revenue < 1000  -- Now you can use the alias
+  ORDER BY revenue;
+  ```
