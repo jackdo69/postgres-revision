@@ -733,3 +733,72 @@ Master these essential **psql meta-commands** regardless of client choice:
   WHERE revenue < 1000  -- Now you can use the alias
   ORDER BY revenue;
   ```
+
+### ROLLUP
+- **Purpose**: Generate hierarchical subtotals and grand totals in GROUP BY queries
+- **What it does**: Creates grouping sets from right to left, adding NULL for each level of aggregation
+- **Syntax**:
+  ```sql
+  SELECT column1, column2, aggregate_function(column3)
+  FROM table_name
+  GROUP BY ROLLUP (column1, column2);
+  ```
+- **How ROLLUP works**:
+  ```sql
+  -- ROLLUP (col1, col2) creates these grouping sets:
+  -- 1. GROUP BY col1, col2    (most detailed)
+  -- 2. GROUP BY col1           (col2 becomes NULL)
+  -- 3. GROUP BY ()             (grand total - both become NULL)
+  ```
+- **Examples**:
+  ```sql
+  -- Monthly booking totals with facility subtotals and grand total
+  SELECT facid,
+         EXTRACT(MONTH FROM starttime) AS month,
+         SUM(slots) AS slots
+  FROM cd.bookings
+  WHERE EXTRACT(YEAR FROM starttime) = 2012
+  GROUP BY ROLLUP(facid, EXTRACT(MONTH FROM starttime))
+  ORDER BY facid, month;
+
+  -- Output structure:
+  -- facid | month | slots
+  -- ------+-------+-------
+  --   0   |   1   |  100   (facility 0, January)
+  --   0   |   2   |  150   (facility 0, February)
+  --   ...
+  --   0   | NULL  |  1500  (facility 0 total - all months)
+  --   1   |   1   |  200   (facility 1, January)
+  --   ...
+  --   1   | NULL  |  2000  (facility 1 total - all months)
+  --  NULL | NULL  |  5000  (grand total - all facilities, all months)
+
+  -- Member recommendations with subtotals
+  SELECT recommendedby,
+         memid,
+         COUNT(*) AS recommendations
+  FROM cd.members
+  WHERE recommendedby IS NOT NULL
+  GROUP BY ROLLUP(recommendedby, memid)
+  ORDER BY recommendedby, memid;
+
+  -- Sales by region and product with totals
+  SELECT region,
+         product,
+         SUM(revenue) AS total_revenue
+  FROM sales
+  GROUP BY ROLLUP(region, product)
+  ORDER BY region, product;
+  -- Shows: each region-product combo, region totals, and grand total
+  ```
+- **Important notes**:
+  - **Order matters**: ROLLUP creates hierarchy from left to right
+    - `ROLLUP(year, month)` gives: (year, month), (year), ()
+    - `ROLLUP(month, year)` gives: (month, year), (month), ()
+  - **NULLs indicate aggregation levels**: NULL values show where subtotals occur
+  - **Sorting with NULLs**: PostgreSQL sorts NULLs last by default, which works well for ROLLUP
+  - **Common mistake**: Forgetting the year filter can include wrong data in totals
+- **Related functions**:
+  - `CUBE(col1, col2)` - Creates all possible combinations of grouping sets
+  - `GROUPING SETS(...)` - Manually specify which grouping sets to create
+  - `GROUPING(column)` - Returns 1 if column is NULL due to ROLLUP/CUBE, 0 otherwise
